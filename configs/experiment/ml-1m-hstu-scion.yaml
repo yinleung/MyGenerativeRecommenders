@@ -19,23 +19,25 @@ data:
   batch_size: 128
 
 model:
-  optimizer:
-    _target_: generative_recommenders_pl.optimizers.scion.Scion
+  optimizer1:
+    _target_: generative_recommenders_pl.models.optimizers.scion.Scion
     _partial_: true
     lr: 0.001
     momentum: 0.1
     norm: 'Auto'
-    weight_decay: 0.001
-    scale: 50
-    last_scale: 3000
 
-  scheduler:
+  optimizer2: null
+
+
+  scheduler1:
     _target_: torch.optim.lr_scheduler.ReduceLROnPlateau
     _partial_: true
     mode: max
     factor: 0.1
     patience: 10
     threshold: 1e-4
+
+  scheduler2: null
 
   configure_optimizer_params:
     monitor: val/ndcg@100

@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Union
 
 import hydra
 import lightning as L
@@ -26,6 +26,9 @@ from generative_recommenders_pl.models.utils import ops
 from generative_recommenders_pl.models.utils.features import SequentialFeatures
 from generative_recommenders_pl.utils.logger import RankedLogger
 
+from generative_recommenders_pl.models.optimizers.muon import Muon
+from generative_recommenders_pl.models.optimizers.scion import Scion
+
 log = RankedLogger(__name__)
 
 
@@ -42,8 +45,10 @@ class GenerativeRecommenders(L.LightningModule):
         candidate_index: CandidateIndex | DictConfig,
         loss: AutoregressiveLoss | DictConfig,
         metrics: torchmetrics.Metric | DictConfig,
-        optimizer: torch.optim.Optimizer | DictConfig,
-        scheduler: torch.optim.lr_scheduler.LRScheduler | DictConfig,
+        optimizer1: Union[DictConfig, Any],
+        optimizer2: Union[DictConfig, Any],
+        scheduler1: Union[DictConfig, Any],
+        scheduler2: Union[DictConfig, Any],
         configure_optimizer_params: DictConfig,
         gr_output_length: int,
         item_embedding_dim: int,
@@ -51,16 +56,33 @@ class GenerativeRecommenders(L.LightningModule):
     ) -> None:
         super().__init__()
 
-        self.optimizer: torch.optim.Optimizer = (
-            hydra.utils.instantiate(optimizer)
-            if isinstance(optimizer, DictConfig)
-            else optimizer
-        )
-        self.scheduler: torch.optim.lr_scheduler.LRScheduler = (
-            hydra.utils.instantiate(scheduler)
-            if isinstance(scheduler, DictConfig)
-            else scheduler
-        )
+        self.automatic_optimization = False
+
+        self.optimizer1 = hydra.utils.instantiate(optimizer1)
+        self.optimizer2 = hydra.utils.instantiate(optimizer2)
+
+        self.scheduler1 = hydra.utils.instantiate(scheduler1)
+        self.scheduler2 = hydra.utils.instantiate(scheduler2)
+
+        if optimizer1 is None and optimizer2 is not None:
+            self.optimizer1 = hydra.utils.instantiate(optimizer2)
+            self.optimizer2 = None
+        elif optimizer1 is not None:
+            self.optimizer1 = hydra.utils.instantiate(optimizer1)
+            self.optimizer2 = hydra.utils.instantiate(optimizer2) if optimizer2 is not None else None
+        else:
+            raise ValueError("At least one optimizer (optimizer1 or optimizer2) must be provided.")
+
+        if scheduler1 is None and scheduler2 is not None:
+            self.scheduler1 = hydra.utils.instantiate(scheduler2)
+            self.scheduler2 = None
+        elif scheduler1 is not None:
+            self.scheduler1 = hydra.utils.instantiate(scheduler1)
+            self.scheduler2 = hydra.utils.instantiate(scheduler2) if scheduler2 is not None else None
+        else:
+            self.scheduler1 = None
+            self.scheduler2 = None
+
         self.configure_optimizer_params: dict[str, Any] = configure_optimizer_params
 
         self.gr_output_length: int = gr_output_length
@@ -229,28 +251,75 @@ class GenerativeRecommenders(L.LightningModule):
         if self.compile_model and stage == "fit":
             self.net = torch.compile(self.net)
 
-    def configure_optimizers(self) -> dict[str, Any]:
-        """Choose what optimizers and learning-rate schedulers to use in your optimization.
-        Normally you'd need one. But in the case of GANs or similar you might have multiple.
-
-        Examples:
-            https://lightning.ai/docs/pytorch/latest/common/lightning_module.html#configure-optimizers
-
-        Returns:
-            dict[str, Any]: A dict containing the configured optimizers and learning-rate
-                schedulers to be used for training.
+    def configure_optimizers(self) -> tuple[list[Any], list[Any]]:
         """
-        optimizer = self.optimizer(params=self.trainer.model.parameters())
-        if self.scheduler is not None:
-            scheduler = self.scheduler(optimizer=optimizer)
-            return {
-                "optimizer": optimizer,
-                "lr_scheduler": {
-                    "scheduler": scheduler,
-                    **self.configure_optimizer_params,
-                },
-            }
-        return {"optimizer": optimizer}
+        Configure optimizers and learning rate schedulers.
+
+        If only one optimizer is provided, all model parameters will be passed to it.
+        If two optimizers are provided, parameters will be split into groups.
+        """
+        raw_model = self.trainer.model
+
+        optimizers = []
+        schedulers = []
+
+        configure_params = getattr(self, "configure_optimizer_params", {})
+
+        # === Count how many optimizers are defined ===
+        has_opt1 = hasattr(self, "optimizer1") and self.optimizer1 is not None
+        has_opt2 = hasattr(self, "optimizer2") and self.optimizer2 is not None
+
+        num_optimizers = has_opt1 + has_opt2
+
+        if num_optimizers == 0:
+            raise ValueError("At least one optimizer (optimizer1 or optimizer2) must be provided.")
+
+        if num_optimizers == 1:
+            # === Only one optimizer: use all parameters ===
+            # all_params = list(raw_model.parameters())
+            if has_opt1:
+                optimizer = self.optimizer1(params=raw_model.parameters())
+                optimizers.append(optimizer)
+                if hasattr(self, "scheduler1") and self.scheduler1 is not None:
+                    scheduler = self.scheduler1(optimizer=optimizer)
+                    schedulers.append({"scheduler": scheduler, **configure_params})
+            else:
+                optimizer = self.optimizer2(params=all_params)
+                optimizers.append(optimizer)
+                if hasattr(self, "scheduler2") and self.scheduler2 is not None:
+                    scheduler = self.scheduler2(optimizer=optimizer)
+                    schedulers.append({"scheduler": scheduler, **configure_params})
+
+        else:
+            # === Two optimizers: split param groups ===
+            embed_params = [
+                p for n, p in raw_model.named_parameters()
+                if "embed" in n
+            ]
+            scalar_params = [
+                p for p in raw_model.parameters()
+                if p.ndim < 2
+            ]
+            hall_params = set(embed_params + scalar_params)
+            hidden_matrix_params = [p for p in raw_model.parameters() if p not in hall_params and p.ndim >= 2]
+            all_params = set(embed_params + scalar_params + hidden_matrix_params)
+            other_params = [p for p in raw_model.parameters() if p not in all_params]
+
+
+            optimizer1 = self.optimizer1(params=scalar_params + embed_params)
+            optimizer2 = self.optimizer2(params=hidden_matrix_params + other_params)
+
+            optimizers.extend([optimizer1, optimizer2])
+
+            if hasattr(self, "scheduler1") and self.scheduler1 is not None:
+                sched1 = self.scheduler1(optimizer=optimizer1)
+                schedulers.append({"scheduler": sched1, **configure_params})
+
+            if hasattr(self, "scheduler2") and self.scheduler2 is not None:
+                sched2 = self.scheduler2(optimizer=optimizer2)
+                schedulers.append({"scheduler": sched2, **configure_params})
+
+        return optimizers, schedulers
 
     def state_dict(self, destination=None, prefix="", keep_vars=False):
         # Call the superclass's state_dict method to get the full state dictionary

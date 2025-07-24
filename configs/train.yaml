@@ -8,11 +8,10 @@ defaults:
   - model: hstu
   - callbacks: default
   - logger: many_loggers
-  - trainer: default
+  - trainer: gpu
   - paths: default
   - extras: default
   - hydra: default
-  - optimizers: adamw
 
   # experiment configs allow for version control of specific hyperparameters
   # e.g. best hyperparameters for given model and datamodule

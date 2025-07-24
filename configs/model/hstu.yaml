@@ -1,18 +1,5 @@
 _target_: generative_recommenders_pl.models.retrieval.Retrieval
 
-optimizer:
-  _target_: torch.optim.SGD
-  _partial_: true
-
-scheduler:
-  _target_: torch.optim.lr_scheduler.ConstantLR
-  _partial_: true
-
-configure_optimizer_params:
-  monitor: val/hr@100
-  interval: epoch
-  frequency: 1
-
 gr_output_length: 10
 item_embedding_dim: 50
 

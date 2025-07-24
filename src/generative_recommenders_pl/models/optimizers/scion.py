@@ -226,20 +226,6 @@ class Scion(torch.optim.Optimizer):
         scale (float, optional): Scale factor for updates (default: 1.0)
         unconstrained (bool, optional): Whether to use unconstrained updates (default: False)
     
-    Example:
-        >>> radius = 50.0
-        >>> optim_groups = [{
-        ...     'params': model.transformer.h.parameters(),
-        ...     'norm': 'Spectral',
-        ...     'norm_kwargs': {},
-        ...     'scale': radius,
-        ... }, {
-        ...     'params': model.lm_head.parameters(),
-        ...     'norm': 'Sign',
-        ...     'norm_kwargs': {},
-        ...     'scale': radius*60.0,
-        ... }]
-        >>> optimizer = Scion(optim_groups, lr=2**-12, momentum=0.1)
     """
     def __init__(self, params, lr=1e-3, momentum=1.0, norm: str='Auto', norm_kwargs: dict=None, scale=1.0, unconstrained=False):
         if lr < 0.0:
@@ -251,7 +237,13 @@ class Scion(torch.optim.Optimizer):
         defaults = dict(lr=lr, momentum=momentum, scale=scale, unconstrained=unconstrained, norm=norm, norm_kwargs=norm_kwargs)
         super().__init__(params, defaults)
 
-    def step(self):
+    @torch.no_grad()
+    def step(self, closure=None, **kwargs):
+        loss = None
+        if closure is not None:
+            with torch.enable_grad():
+                loss = closure()
+                
         for group in self.param_groups:
             lr = group['lr']
             momentum = group['momentum']

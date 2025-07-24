@@ -59,6 +59,24 @@ class Retrieval(GenerativeRecommenders):
             torch.Tensor: The loss tensor.
         """
         # convert the batch to the sequence features (TODO: move to datamodule)
+
+        optimizers = self.optimizers()
+        schedulers = self.lr_schedulers()
+
+        if isinstance(optimizers, (list, tuple)):
+            optimizer1 = optimizers[0]
+            optimizer2 = optimizers[1] if len(optimizers) > 1 else None
+        else:
+            optimizer1 = optimizers
+            optimizer2 = None
+
+        if isinstance(schedulers, (list, tuple)):
+            scheduler1 = schedulers[0]
+            scheduler2 = schedulers[1] if len(schedulers) > 1 else None
+        else:
+            scheduler1 = schedulers
+            scheduler2 = None
+
         seq_features, target_ids, target_ratings = seq_features_from_row(
             batch,
             device=self.device,
@@ -110,6 +128,28 @@ class Retrieval(GenerativeRecommenders):
             similarity=self.similarity,
             **jagged_features,
         )
+
+        # === Backward and Optimizer Step ===
+        if optimizer1 is not None:
+            optimizer1.zero_grad()
+        if optimizer2 is not None:
+            optimizer2.zero_grad()
+
+        self.manual_backward(loss)
+
+        if optimizer1 is not None:
+            optimizer1.step()
+        if optimizer2 is not None:
+            optimizer2.step()
+
+        # === Scheduler Step (only if last batch and metric is available) ===
+        if self.trainer.is_last_batch:
+            metric = getattr(self, "val_metric_for_scheduler", None)
+            if metric is not None:
+                if scheduler1 is not None:
+                    scheduler1.step(metric)
+                if scheduler2 is not None:
+                    scheduler2.step(metric)
 
         self.log(
             "train/loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True
@@ -166,6 +206,7 @@ class Retrieval(GenerativeRecommenders):
         self.metrics.reset()
         if "monitor" in self.configure_optimizer_params:
             return results[self.configure_optimizer_params["monitor"].split("/")[1]]
+        self.val_metric_for_scheduler = results.get("hr@100")
 
     def on_test_epoch_start(self) -> None:
         """Lightning calls this at the beginning of the test epoch."""

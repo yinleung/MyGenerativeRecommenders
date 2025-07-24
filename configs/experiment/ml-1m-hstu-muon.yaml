@@ -19,14 +19,22 @@ data:
   batch_size: 128
 
 model:
+
   optimizer1:
     _target_: torch.optim.AdamW
     _partial_: true
     lr: 0.001
-    betas: [0.9, 0.98]
+    betas: [0.8, 0.95]
+    eps: 1e-10
     weight_decay: 0.001
 
   optimizer2: null
+    _target_: generative_recommenders_pl.models.optimizers.muon.Muon
+    _partial_: true
+    lr: 0.05
+    momentum: 0.95
+    weight_decay: 0.0001
+
 
   scheduler1:
     _target_: torch.optim.lr_scheduler.ReduceLROnPlateau
@@ -37,17 +45,23 @@ model:
     threshold: 1e-4
 
   scheduler2: null
+    _target_: torch.optim.lr_scheduler.ReduceLROnPlateau
+    _partial_: true
+    mode: max
+    factor: 0.1
+    patience: 10
+    threshold: 1e-4
 
   configure_optimizer_params:
-    monitor: val/ndcg@100
+    monitor: val/hr@100
     interval: epoch
     frequency: 1
 
 callbacks:
   model_checkpoint:
-    monitor: val/ndcg@100
+    monitor: val/hr@100
     mode: max
   early_stopping:
-    monitor: val/ndcg@100
+    monitor: val/hr@100
     patience: 20
     mode: max
