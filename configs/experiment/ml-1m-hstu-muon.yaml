@@ -28,7 +28,7 @@ model:
     eps: 1e-10
     weight_decay: 0.001
 
-  optimizer2: null
+  optimizer2:
     _target_: generative_recommenders_pl.models.optimizers.muon.Muon
     _partial_: true
     lr: 0.05
@@ -44,7 +44,7 @@ model:
     patience: 10
     threshold: 1e-4
 
-  scheduler2: null
+  scheduler2:
     _target_: torch.optim.lr_scheduler.ReduceLROnPlateau
     _partial_: true
     mode: max
@@ -53,15 +53,15 @@ model:
     threshold: 1e-4
 
   configure_optimizer_params:
-    monitor: val/hr@100
+    monitor: val/ndcg@100
     interval: epoch
     frequency: 1
 
 callbacks:
   model_checkpoint:
-    monitor: val/hr@100
+    monitor: val/ndcg@100
     mode: max
   early_stopping:
-    monitor: val/hr@100
+    monitor: val/ndcg@100
     patience: 20
     mode: max

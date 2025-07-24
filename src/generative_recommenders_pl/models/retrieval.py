@@ -206,7 +206,9 @@ class Retrieval(GenerativeRecommenders):
         self.metrics.reset()
         if "monitor" in self.configure_optimizer_params:
             return results[self.configure_optimizer_params["monitor"].split("/")[1]]
-        self.val_metric_for_scheduler = results.get("hr@100")
+        
+        # setting monitor metric
+        self.val_metric_for_scheduler = results.get("ndcg@100")
 
     def on_test_epoch_start(self) -> None:
         """Lightning calls this at the beginning of the test epoch."""
