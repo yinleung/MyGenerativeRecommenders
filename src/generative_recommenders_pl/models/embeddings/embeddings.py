@@ -11,7 +11,7 @@ log = RankedLogger(__name__)
 # 读取年份数据并创建预计算的lookup table
 import pandas as pd
 try:
-    df = pd.read_csv("/home/yuyu/Recommend_Systems/generative-recommenders-pl/tmp/ml-1m/processed_movies.csv")
+    df = pd.read_csv("/home/wenlk/xlli/MyGenerativeRecommenders/tmp/processed/ml-1m/movies.csv")
     item2year = {int(row["movie_id"]): int(row["year"]) for _, row in df.iterrows()}
 except Exception as e:
     print(f"Warning: Could not load movies data: {e}")
@@ -45,12 +45,21 @@ class LocalEmbeddingModule(EmbeddingModule):
     ) -> None:
         super().__init__()
 
+        # self._item_embedding_dim: int = item_embedding_dim
+        # self._item_emb = torch.nn.Embedding(
+        #     num_items + 1, 50, padding_idx=0
+        # )
+        # self._year_emb = torch.nn.Embedding(
+        #     num_items + 1, 50, padding_idx=0
+        # )
         self._item_embedding_dim: int = item_embedding_dim
+        # 根据配置的一半来创建子嵌入
+        half_dim = item_embedding_dim // 2
         self._item_emb = torch.nn.Embedding(
-            num_items + 1, 50, padding_idx=0
+            num_items + 1, half_dim, padding_idx=0
         )
         self._year_emb = torch.nn.Embedding(
-            num_items + 1, 50, padding_idx=0
+            num_items + 1, half_dim, padding_idx=0
         )
         
         # 创建预计算的tensor lookup table

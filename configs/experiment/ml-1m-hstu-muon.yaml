@@ -16,7 +16,7 @@ trainer:
   max_epochs: 500
 
 data:
-  batch_size: 512
+  batch_size: 128
 
 model:
 
@@ -45,7 +45,7 @@ model:
     threshold: 1e-4
 
   scheduler2:
-    _target_: torch.optim.lr_scheduler.ReduceLROnPlateau
+    _target_: torch.optim.lr_scheduler.ReduceLROnPlateau 
     _partial_: true
     mode: max
     factor: 0.1

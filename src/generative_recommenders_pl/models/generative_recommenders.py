@@ -260,6 +260,9 @@ class GenerativeRecommenders(L.LightningModule):
         """
         raw_model = self.trainer.model
 
+        for name, param in raw_model.named_parameters():
+            print(f"{name}: {param.shape}, requires_grad={param.requires_grad}")
+
         optimizers = []
         schedulers = []
 
@@ -294,20 +297,17 @@ class GenerativeRecommenders(L.LightningModule):
             # === Two optimizers: split param groups ===
             embed_params = [
                 p for n, p in raw_model.named_parameters()
-                if "embed" in n
+                if "emb" in n
             ]
             scalar_params = [
                 p for p in raw_model.parameters()
                 if p.ndim < 2
             ]
-            hall_params = set(embed_params + scalar_params)
-            hidden_matrix_params = [p for p in raw_model.parameters() if p not in hall_params and p.ndim >= 2]
-            all_params = set(embed_params + scalar_params + hidden_matrix_params)
-            other_params = [p for p in raw_model.parameters() if p not in all_params]
-
+            all_params = set(embed_params + scalar_params)
+            hidden_matrix_params = [p for p in raw_model.sequence_encoder.parameters() if p not in all_params and p.ndim >= 2]
 
             optimizer1 = self.optimizer1(params=scalar_params + embed_params)
-            optimizer2 = self.optimizer2(params=hidden_matrix_params + other_params)
+            optimizer2 = self.optimizer2(params=hidden_matrix_params)
 
             optimizers.extend([optimizer1, optimizer2])
 
