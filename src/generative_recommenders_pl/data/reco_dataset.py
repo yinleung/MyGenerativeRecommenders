@@ -10,6 +10,9 @@ from omegaconf import DictConfig
 from generative_recommenders_pl.data.preprocessor import DataProcessor
 from generative_recommenders_pl.utils.logger import RankedLogger
 
+# 722 Modification
+from tkinter.font import names
+
 log = RankedLogger(__name__)
 
 
@@ -154,12 +157,39 @@ class RecoDataset(torch.utils.data.Dataset):
             0,
             sampling_kept_mask=sampling_kept_mask,
         )
+
+        # 7.22 Modification: Adding Movie_years and Movie_genres as features
+        movie_years, years_len = eval_int_list(
+            data.sequence_years,
+            self._padding_length,
+            self._ignore_last_n,
+            0,
+            sampling_kept_mask=sampling_kept_mask,
+        )
+        
+        # movie_genres, genres_len = eval_int_list(
+        #     data.sequence_genres,
+        #     self._padding_length,
+        #     self._ignore_last_n,
+        #     0,
+        #     sampling_kept_mask=sampling_kept_mask,
+        # )        
+        
+        
         assert (
             movie_history_len == timestamps_len
         ), f"history len {movie_history_len} differs from timestamp len {timestamps_len}."
         assert (
             movie_history_len == ratings_len
         ), f"history len {movie_history_len} differs from ratings len {ratings_len}."
+        
+        # 7.22 Modification: Adding Movie_years and Movie_genres as features
+        assert (
+            movie_history_len == years_len
+        ), f"history len {movie_history_len} differs from ratings len {years_len}."
+        # assert (
+        #     movie_history_len == genres_len
+        # ), f"history len {movie_history_len} differs from ratings len {genres_len}."
 
         def _truncate_or_pad_seq(
             y: List[int], target_len: int, chronological: bool
@@ -174,17 +204,45 @@ class RecoDataset(torch.utils.data.Dataset):
                     y = y[-target_len:]
             assert len(y) == target_len
             return y
+        
+        # 7.22 Modification: Adding Movie_years and Movie_genres as features
+        def _truncate_or_pad_seq_vec(y: List[List[int]], target_len: int, chronological: bool) -> List[List[int]]:
+            y_len = len(y)
+            genre_dim = len(y[0]) if y else 0
+            if y_len < target_len:
+                pad_vec = [0] * genre_dim
+                y = y + [pad_vec] * (target_len - y_len)
+            else:
+                if not chronological:
+                    y = y[:target_len]
+                else:
+                    y = y[-target_len:]
+            assert len(y) == target_len
+            return y
+
 
         historical_ids = movie_history[1:]
         historical_ratings = movie_history_ratings[1:]
         historical_timestamps = movie_timestamps[1:]
+        
+        # 7.22 Modification: Adding Movie_years and Movie_genres as features
+        historical_years = movie_years[1:]
+        # historical_genres = movie_genres[1:]
+        
         target_ids = movie_history[0]
         target_ratings = movie_history_ratings[0]
         target_timestamps = movie_timestamps[0]
+        
+        # 7.22 Modification: Adding Movie_years and Movie_genres as features
+        target_years = movie_years[0]
+        # target_genres = torch.tensor(movie_genres[0])
+
         if self._chronological:
             historical_ids.reverse()
             historical_ratings.reverse()
             historical_timestamps.reverse()
+            historical_years.reverse()
+            # historical_genres.reverse()
 
         max_seq_len = self._padding_length - 1
         history_length = min(len(historical_ids), max_seq_len)
@@ -203,6 +261,18 @@ class RecoDataset(torch.utils.data.Dataset):
             max_seq_len,
             self._chronological,
         )
+        
+        # 7.22 Modification: Adding Movie_years and Movie_genres as features
+        historical_years = _truncate_or_pad_seq(
+            historical_years,
+            max_seq_len,
+            self._chronological,
+        )
+        # historical_genres = _truncate_or_pad_seq_vec(
+        #     historical_genres,
+        #     max_seq_len,
+        #     self._chronological,
+        # )
         ret = {
             "user_id": user_id,
             "historical_ids": torch.tensor(historical_ids, dtype=torch.int64),
@@ -210,10 +280,16 @@ class RecoDataset(torch.utils.data.Dataset):
             "historical_timestamps": torch.tensor(
                 historical_timestamps, dtype=torch.int64
             ),
+            # 7.22 Modification: Adding Movie_years and Movie_genres as features
+            "historical_years": torch.tensor(historical_years, dtype=torch.int64),
+            # "historical_genres": torch.tensor(historical_genres, dtype=torch.int64),
             "history_lengths": history_length,
             "target_ids": target_ids,
             "target_ratings": target_ratings,
             "target_timestamps": target_timestamps,
+            # 7.22 Modification: Adding Movie_years and Movie_genres as features
+            "target_years": target_years,
+            # "target_genres": target_genres,
         }
 
         for column in self._additional_columns:

@@ -86,6 +86,7 @@ class LocalNegativesSampler(NegativesSampler):
         self._num_items: int = len(all_item_ids)
         self.register_buffer("_all_item_ids", torch.tensor(all_item_ids))
         self._item_emb: torch.nn.Embedding = None
+        self._embeddings_module = None
 
     def debug_str(self) -> str:
         sampling_debug_str = (
@@ -120,7 +121,15 @@ class LocalNegativesSampler(NegativesSampler):
             device=positive_ids.device,
         )
         sampled_ids = self._all_item_ids[sampled_offsets.view(-1)].reshape(output_shape)
-        return sampled_ids, self.normalize_embeddings(self._item_emb(sampled_ids))
+        
+        # 7.22 Modification: Use embeddings module if available
+        #return sampled_ids, self.normalize_embeddings(self._item_emb(sampled_ids))
+        if self._embeddings_module is not None:
+            sampled_embeddings = self._embeddings_module.get_item_embeddings(sampled_ids)
+        else:
+            sampled_embeddings = self._item_emb(sampled_ids)
+        return sampled_ids, self.normalize_embeddings(sampled_embeddings)
+
 
 
 class InBatchNegativesSampler(NegativesSampler):

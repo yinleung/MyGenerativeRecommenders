@@ -111,7 +111,10 @@ class Retrieval(GenerativeRecommenders):
             )
         else:
             # update embedding in the local negative sampler
-            self.negatives_sampler._item_emb = self.embeddings._item_emb
+            # self.negatives_sampler._item_emb = self.embeddings._item_emb
+            
+            # 7.22 Modification
+            self.negatives_sampler._embeddings_module = self.embeddings
 
         # dense features to jagged features
         # TODO: seems that the target_ids is not used in the loss

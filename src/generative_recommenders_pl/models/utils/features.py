@@ -9,6 +9,7 @@ class SequentialFeatures(NamedTuple):
     # (B, N,) x int64. 0 denotes valid ids.
     past_ids: torch.Tensor
     # (B, N, D) x float.
+    past_years: torch.Tensor
     past_embeddings: Optional[torch.Tensor]
     # Implementation-specific payloads.
     # e.g., past timestamps, past event_types (e.g., clicks, likes), etc.
@@ -24,40 +25,29 @@ def seq_features_from_row(
     historical_ids = row["historical_ids"].to(device)  # [B, N]
     historical_ratings = row["historical_ratings"].to(device)
     historical_timestamps = row["historical_timestamps"].to(device)
+    historical_years = row["historical_years"].to(device)
     target_ids = row["target_ids"].to(device).unsqueeze(1)  # [B, 1]
     target_ratings = row["target_ratings"].to(device).unsqueeze(1)
     target_timestamps = row["target_timestamps"].to(device).unsqueeze(1)
+    target_years = row["target_years"].to(device).unsqueeze(1)
     if max_output_length > 0:
         B = historical_lengths.size(0)
         historical_ids = torch.cat(
-            [
-                historical_ids,
-                torch.zeros(
-                    (B, max_output_length), dtype=historical_ids.dtype, device=device
-                ),
-            ],
+            [historical_ids,torch.zeros((B, max_output_length), dtype=historical_ids.dtype, device=device),],
             dim=1,
         )
         historical_ratings = torch.cat(
-            [
-                historical_ratings,
-                torch.zeros(
-                    (B, max_output_length),
-                    dtype=historical_ratings.dtype,
-                    device=device,
-                ),
-            ],
+            [historical_ratings,torch.zeros((B, max_output_length), dtype=historical_ratings.dtype, device=device,),],
+            dim=1,
+        )
+        historical_years = torch.cat(
+            [historical_years,torch.zeros((B, max_output_length), dtype=historical_years.dtype, device=device,),],
             dim=1,
         )
         historical_timestamps = torch.cat(
             [
                 historical_timestamps,
-                torch.zeros(
-                    (B, max_output_length),
-                    dtype=historical_timestamps.dtype,
-                    device=device,
-                ),
-            ],
+                torch.zeros((B, max_output_length), dtype=historical_timestamps.dtype, device=device, ),],
             dim=1,
         )
         historical_timestamps.scatter_(
@@ -70,14 +60,17 @@ def seq_features_from_row(
         "history_lengths",
         "historical_ids",
         "historical_ratings",
+        "historical_years",
         "historical_timestamps",
         "target_ids",
         "target_ratings",
+        "target_years",
         "target_timestamps",
     }
     features = SequentialFeatures(
         past_lengths=historical_lengths,
         past_ids=historical_ids,
+        past_years=historical_years,
         past_embeddings=None,
         past_payloads={
             "timestamps": historical_timestamps,
